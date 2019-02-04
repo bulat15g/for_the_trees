@@ -3,7 +3,7 @@ import os
 import pandas as pd
 import numpy as np
 
-######
+###
 divs_count = 60
 folder = os.getcwd() + "/res/"
 fail_folder = os.getcwd() + "/fail/"
@@ -24,7 +24,7 @@ for file_name in glob.glob("*.txt"):
     df.drop('laser', 1, inplace=True)
     df['x'] -= df['x'].mean()
     df['y'] -= df['y'].mean()
-    df['z'] = (df['z'] - df['z'].min()) / (df['z'].max() - df['z'].min() + 0.01) * divs_count
+    df['z'] = (df['z'] - df['z'].min()) / (df['z'].max() - df['z'].min() + 0.001) * divs_count
     df['z'] = df['z'].round(0)
 
     for num in range(int(divs_count)):
