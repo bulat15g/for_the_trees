@@ -1,79 +1,48 @@
-import time
-from math import sqrt
-
+import glob
+import os
+import pandas as pd
 import numpy as np
 
-from classif.trees_lib import *
+######
+divs_count = 60
+folder = os.getcwd() + "/res/"
+fail_folder = os.getcwd() + "/fail/"
+min_mean = 0.6
+min_std = 0.1
+mid_of_max = 7
+side_of_square=0.1
+###
+for i in [folder,fail_folder]:
+    if not os.path.exists(i):
+        os.makedirs(i)
 
-# script will parse all txt files in this directory
+for file_name in glob.glob("*.txt"):
+    out_df = pd.DataFrame(columns=['rad', 'den_std'])
 
-divs_count = 60.0
-scale_all = False
-res_folder_name = "res"
-min_middle_of_section = 1.5
-min_sigma_of_sections = 1
-middle_of_max = 7
+    df = pd.read_csv(file_name, delimiter=' ', header=None)
+    df.columns = ['x', 'y', 'z', 'laser']
+    df.drop('laser', 1, inplace=True)
+    df['x'] -= df['x'].mean()
+    df['y'] -= df['y'].mean()
+    df['z'] = (df['z'] - df['z'].min()) / (df['z'].max() - df['z'].min() + 0.01) * divs_count
+    df['z'] = df['z'].round(0)
 
-###### exit change
-time_start = time.time()
+    for num in range(int(divs_count)):
+        ndf = df[df['z'] == num]
+        ndf['x_t'] = np.round((ndf['x'] - ndf['x'].min()) / side_of_square)
+        ndf['y_t'] = np.round((ndf['y'] - ndf['y'].min()) / side_of_square)
 
+        ndf['rad'] = np.sqrt(ndf['x'] ** 2 + ndf['y'] ** 2)
+        a = ndf['rad'].tolist()
+        a.sort()
 
-def parse_file(name, dir_name):
-    file_name = name
-    f = open(file_name, "r")
-    points = list()
-    read_text_file(f, points)
+        out_df = out_df.append({"rad": np.median(a[-mid_of_max:]),'den_std':np.std(np.array([ndf['x_t'].values, ndf['y_t'].values]))}, ignore_index=True)
 
-    # find params
-    mins = [9999999.0, 9999999.0, 9999999.0]
-    maxs = [-9999999.0, -9999999.0, -9999999.0]
-    middles = [0.0, 0.0, 0.0]
-    absolute_values = [0.0, 0.0, 0.0]
-    get_abs_val_point(points, mins, maxs, middles, absolute_values, scale_all)
+    out_df.fillna(method='ffill', inplace=True)
 
-    # do shift and find rads
-    sec_val = []
-    pre_final_sec_val = [0.0] * int(divs_count)
-    for i in range(int(divs_count)):
-        sec_val.append([])
-
-    for i in points:
-        if scale_all:
-            i.x = (i.x - middles[0]) / absolute_values[0]
-            i.y = (i.y - middles[1]) / absolute_values[1]
-        else:
-            i.x -= middles[0]
-            i.y -= middles[1]
-        i.z = (i.z - mins[2]) / absolute_values[2]
-        rad = sqrt(i.x ** 2 + i.y ** 2)
-        section_num = int(i.z * divs_count)
-        sec_val[section_num].append(rad)
-
-    # parse to final results
-
-    for i in range(int(divs_count)):
-        sec_val[i].sort()
-        loc = sec_val[i][-middle_of_max:]
-        loc = np.array(loc)
-        pre_final_sec_val[i] = float(np.median(loc))
-
-    fin_sec_val_numpy = fill_nan_in_array(np.array(pre_final_sec_val))
-
-    if float(fin_sec_val_numpy.std()) < min_sigma_of_sections or float(
-            fin_sec_val_numpy.mean()) < min_middle_of_section:
-        print(name, "  Is wery small :mean  ", fin_sec_val_numpy.mean(), "   std ", fin_sec_val_numpy.std())
-        create_dir(dir_name + "_fail")
-        write_text_file(dir_name + "_fail" + "/" + file_name, pre_final_sec_val)
-
-    # out results
+    out_fold = ''
+    if out_df['rad'].mean() > min_mean and out_df['rad'].std() > min_std:
+        out_fold = folder
     else:
-        create_dir(dir_name)
-        write_text_file(dir_name + "/" + file_name, pre_final_sec_val)
-
-
-files_list = get_files_list()
-
-for i in files_list:
-    parse_file(i, res_folder_name)
-
-print("\n\t", time.time() - time_start, "   seconds was worked")
+        out_fold = fail_folder
+    out_df.to_csv(out_fold + file_name,sep='\t')
