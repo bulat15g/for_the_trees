@@ -9,10 +9,10 @@ warnings.filterwarnings('ignore')
 
 ###
 divs_count = 60
-folder = os.getcwd() + "/parse_results/"
-fail_folder = os.getcwd() + "/parse_results_fail/"
-min_mean = 0.2
-min_std = 0.001
+folder = os.getcwd() + "/res/"
+fail_folder = os.getcwd() + "/results_fail/"
+min_mean = 0.8
+min_std = 0.1
 mid_of_max = 7
 side_of_square = 0.1
 ###
