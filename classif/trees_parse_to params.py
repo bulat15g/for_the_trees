@@ -1,34 +1,39 @@
-import glob
-import os
+from glob import glob
+from os import path
 import pandas as pd
 import numpy as np
-import time
+from time import time
 import warnings
 from collections import Counter
+from platform import system as getsys
+import easygui
 
 warnings.filterwarnings('ignore')
 
+sep = "\\"
+if getsys() == "Linux": sep = "/"
+
 ###
 divs_count = 40
-folder = os.getcwd() + "/list/"
-fail_folder = os.getcwd() + "/results_fail/"
-pre_parse_folder = os.getcwd() + "/alive_whole_list/"
 out_fail_files = False
-min_mean = 0.6
-min_std = 0.08
+min_mean = 0.8
+min_std = 0.09
 mid_of_max = 7
 side_of_square = 0.1
+count_points_on_square = 5
 ###
-begin_time = time.time()
-for i in [folder, fail_folder]:
-    if not os.path.exists(i):
-        os.makedirs(i)
+
+pre_fold = easygui.diropenbox(msg=" select folder FROM") + sep
+pre_fold = easygui.diropenbox(msg=" select folder TO") + sep
+fail_fold = easygui.diropenbox(msg=" select folder FAIL") + sep
+add_need, add = True, easygui.enterbox("type addition to files")
+begin_time = time()
 
 
-def parse_folder(par_fold_name):
-    for file_name in glob.glob(par_fold_name + "/*.txt"):
-        print("going to file {} ,time is {}".format(file_name, round(time.time() - begin_time, 2)))
-        out_df = pd.DataFrame(columns=['rad', 'std', 'den_std'])
+def parse_folder(folder):
+    for file_name in glob(folder + sep + "*.txt"):
+        print("going to file {} ,time is {}".format(file_name, round(time() - begin_time, 2)))
+        out_df = pd.DataFrame(columns=['rad', 'std', 'den_std', 'points_dens'])
 
         # shift coords
         df = pd.read_csv(file_name, delimiter=' ', header=None)
@@ -60,22 +65,24 @@ def parse_folder(par_fold_name):
             a.sort()
 
             out_df = out_df.append(
-                {"rad": np.median(a[-mid_of_max:]), 'std': np.std(np.array([ndf['x_t'].values, ndf['y_t'].values])),
-                 'den_std': np.std(b)},
+                {"rad": np.median(a[-mid_of_max:]),
+                 'std': np.std(np.array([ndf['x_t'].values, ndf['y_t'].values])),
+                 'den_std': np.std(b),
+                 'points_dens': np.size(np.where(np.array(b) > count_points_on_square)) / float(len(b))},
                 ignore_index=True)
 
         # out data
         out_df.fillna(method='ffill', inplace=True)
         if out_df['rad'].mean() > min_mean and out_df['rad'].std() > min_std:
-            out_fold = folder
+            out_fold = pre_fold
         else:
-            out_fold = fail_folder
+            out_fold = fail_fold
 
-        file_name = file_name.split('/')[-1]
+        file_name = add_need * add + file_name.split(sep)[-1]
         out_df.to_csv(out_fold + file_name, sep='\t', index=False)
 
 
-if os.path.exists(pre_parse_folder) and not len(glob.glob(pre_parse_folder + "/*.txt")) < 2:
-    parse_folder(pre_parse_folder)
+if path.exists(pre_fold) and not len(glob(pre_fold + sep + "*.txt")) < 2:
+    parse_folder(pre_fold)
 else:
     print("path not exists or small count of data")
