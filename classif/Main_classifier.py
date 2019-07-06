@@ -1,16 +1,17 @@
-from os import path, makedirs
-from sklearn import linear_model
-from sklearn.metrics import mean_squared_error as mse, accuracy_score as accuracy
-from sklearn.neighbors import KNeighborsClassifier
-from sklearn.ensemble import RandomForestClassifier
-from sklearn.svm import SVC
-from glob import glob
-import xgboost
-import pandas as pd
-import numpy as np
 import warnings
-import easygui
+from glob import glob
 from platform import system as getsys
+
+import easygui
+import numpy as np
+import pandas as pd
+import xgboost
+from sklearn import linear_model
+from sklearn.ensemble import RandomForestClassifier
+from sklearn.metrics import mean_squared_error as mse, accuracy_score as accuracy
+from sklearn.model_selection import StratifiedKFold, cross_val_score
+from sklearn.neighbors import KNeighborsClassifier
+from sklearn.svm import SVC
 
 warnings.filterwarnings('ignore')
 np.set_printoptions(linewidth=80)
@@ -21,8 +22,8 @@ if getsys() == "Linux": sep = "/"
 # ----------- begin change params-----------
 use_density, use_std, point_dens = True, True, True
 count_of_divs = 40
-out_file_name = process_path + sep + "reg_self.txt"
-pred_file_name = process_path + sep + "reg_prediction.txt"
+out_file_name = process_path + sep + "out.csv"
+pred_file_name = process_path + sep + "prediction.txt"
 
 # reg = KNeighborsClassifier(15)
 reg = RandomForestClassifier(n_estimators=1000)
@@ -33,81 +34,85 @@ reg = RandomForestClassifier(n_estimators=1000)
 
 
 # some settings
+use_snag_flag = False
+use_pred_flag = False
 key_words = ['hw', 'list']
 folder1 = process_path + sep + key_words[0]
 folder2 = process_path + sep + key_words[1]
-pred_folder = process_path + sep + "to_pred"
-names = np.array([])
-X = np.ones((count_of_divs * (1 + use_density + use_std + point_dens),)).T
-X_pr = np.ones((count_of_divs * (1 + use_density + use_std + point_dens),)).T
-y = np.array([])
-if not path.exists(pred_folder):
-    makedirs(pred_folder)
+pred_folder = process_path + sep + "sample"
+snag_folder = process_path + sep + "snag"
 
-# Learn preparing
-names = np.append(names, glob(folder1 + sep + '*.txt'))
-names = np.append(names, glob(folder2 + sep + '*.txt'))
 
-for i in glob(folder1 + sep + '*.txt'):
-    tree = pd.read_csv(i, delimiter='\t')
-    X = np.vstack(
-        (X, tree.as_matrix(['rad', 'std' * use_std, 'den_std' * use_density, 'points_dens' * point_dens]).ravel().T))
-    y = np.append(y, [0])
-for i in glob(folder2 + sep + '*.txt'):
-    tree = pd.read_csv(i, delimiter='\t')
-    X = np.vstack(
-        (X, tree.as_matrix(['rad', 'std' * use_std, 'den_std' * use_density, 'points_dens' * point_dens]).ravel().T))
-    y = np.append(y, [1])
-X = X[1:]
+def read_data(folder_name, sign=-1, scan_name=False):
+    X = list()
+    names = list()
+    y = list()
+    for i in glob(folder_name + sep + '*.txt'):
+        with open(i, 'r') as f:
+            values = [line.split(" ") for line in f][0]
+            float_vals = [float(x) for x in values if x != ""]
+            X.append(float_vals)
+        names.append(i.split(sep)[-1])
+        y.append(sign)
 
-# y_pred preparing
-pr_names = [x.split("/")[-1] for x in glob(pred_folder + sep + '*.txt')]
-y_test = np.array([int(key_words[1] in x) for x in pr_names])
-for i in glob(pred_folder + '/*.txt'):
-    tree = pd.read_csv(i, delimiter='\t')
-    X_pr = np.vstack(
-        (X_pr,
-         tree.as_matrix(['rad', 'std' * use_std, 'den_std' * use_density, 'points_dens' * point_dens]).ravel().T))
-X_pr = X_pr[1:]
+    print("already read ", folder_name, np.asarray(X).shape, np.asarray(y).shape, np.asarray(names).shape)
+    if scan_name:
+        y = [int(key_words[1] in x) for x in names]
+    return np.asarray(X), np.asarray(y), np.asarray(names)
 
-# train regressor
-if X.shape[0] < 20:
-    print("train samples not found")
-    exit(0)
-reg.fit(X, y)
 
-# out self results
-y_pred = reg.predict(X)
-with open(out_file_name, 'w') as f:
-    out = [
-        ('mse:  ', mse(y, y_pred)),
-        ('true / all = ',
-         accuracy(y, np.sign(y_pred))),
-        ('ans :  ', y),
-        ('y_pred: ', np.sign(y_pred)),
-        ('FALSE FILES IS: \n \n',
-         np.hstack((names[np.argwhere(y != np.sign(y_pred))],
-                    y_pred[np.argwhere(y != np.sign(y_pred))])))
-    ]
-    for i in out:
-        line = '\n\n\t'
-        for j in i:
-            line += str(j).replace("\n", "\n")
-        f.write(line)
+X_1, y_1, names1 = read_data(folder1, 0)
+X_2, y_2, names2 = read_data(folder2, 1)
 
-# out pred results
-with open(pred_file_name, 'w') as f:
-    if len(list(X_pr.shape)) < 2: print("y_pred samples not found")
-    y_pred = reg.predict(X_pr)
-    out = [(
-        'file - class (' + key_words[0] + ' = 0; ' + key_words[1] + '= 1): \n \n',
-        ('mse:  ', mse(y_test, y_pred)),
-        " accuracy: " + str(accuracy(y_test, np.sign(y_pred))),
-        "\nfile by file result is -",
-        list(zip(pr_names, y_pred,
-                 np.sign(y_pred), np.sign(y_pred) == y_test)))]
-    for i in out:
-        line = '\n\n\t'
-        for j in i:
-            line += "\n" + str(j).replace('), (', "\n")
-        f.write(line)
+X_pred, y_true, names_pred = read_data(pred_folder, scan_name=True)
+X_snag, y_snag, names_snag = read_data(snag_folder, scan_name=True)
+
+print(X_snag)
+if X_snag != 0: use_snag_flag = True
+if X_pred != 0: use_pred_flag = True
+
+X_train = np.vstack((X_1, X_2))
+y_train = np.append(y_1, y_2)
+names_train = np.append(names1, names2)
+del X_1, y_1, names1, X_2, y_2, names2
+
+reg.fit(X_train, y_train)
+
+pred, pred_snag = 0, 0
+if use_pred_flag: pred = reg.predict(X_pred)
+if use_snag_flag: pred_snag = reg.predict(X_snag)
+pred_self = reg.predict(X_train)
+
+with open(pred_file_name, "w") as f:
+    f.write("Mse on train is " + str(mse(pred_self, y_train)) + "\n")
+    f.write("Accuracy on train is " + str(accuracy(pred_self, y_train)) + "\n")
+
+    if use_pred_flag:
+        f.write("Mse on predict is " + str(mse(pred, y_true)) + "\n")
+        f.write("Accuracy on predict is " + str(accuracy(pred, y_true)) + "\n")
+
+if pred != 0:
+    df = pd.DataFrame({"name": list(names_train) + list(names_pred) * use_pred_flag + list(names_snag) * use_snag_flag,
+                       "true": list(y_train) + list(y_true) * use_pred_flag + list(y_snag) * use_snag_flag,
+                       "pred": list(pred_self) + list(pred) * use_pred_flag + list(pred_snag) * use_snag_flag,
+                       "type": ["train"] * X_train.shape[0] + ["test"] * X_pred.shape[0] * use_pred_flag + ["snag"] *
+                               X_snag.shape[0] * use_snag_flag
+                       })
+    df.to_csv(out_file_name, index=False)
+
+msg = "Необходимо протестироват сразу несколько моделей?"
+choices = ("[<F1>]Да", "[<F2>]Нет")
+
+if easygui.ynbox(msg, "hey", choices, image=None, default_choice="[<F1>]Да", cancel_choice="[<F2>]Нет"):
+    message = ""
+    models = [KNeighborsClassifier(15),
+              RandomForestClassifier(n_estimators=1000),
+              linear_model.LogisticRegression(class_weight='balanced'),
+              SVC(class_weight="balanced"),
+              xgboost.XGBClassifier(n_estimators=100)]
+    for i in models:
+        straticfication = StratifiedKFold(n_splits=6, shuffle=True)
+        scores = cross_val_score(i, X_train, y_train, scoring="accuracy", cv=straticfication)
+        message += str((type(i), "\t", np.mean(scores), scores)) + "\n"
+    easygui.msgbox(message)
+    print(message)
