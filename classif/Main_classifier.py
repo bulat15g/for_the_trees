@@ -36,7 +36,8 @@ reg = RandomForestClassifier(n_estimators=1000)
 # some settings
 use_snag_flag = False
 use_pred_flag = False
-key_words = ['hw', 'list']
+# key_words = ['hw', 'list']
+key_words = ['dead', 'alive']
 folder1 = process_path + sep + key_words[0]
 folder2 = process_path + sep + key_words[1]
 pred_folder = process_path + sep + "sample"
@@ -67,9 +68,8 @@ X_2, y_2, names2 = read_data(folder2, 1)
 X_pred, y_true, names_pred = read_data(pred_folder, scan_name=True)
 X_snag, y_snag, names_snag = read_data(snag_folder, scan_name=True)
 
-print(X_snag)
-if X_snag != 0: use_snag_flag = True
-if X_pred != 0: use_pred_flag = True
+if not isinstance(X_snag, int): use_snag_flag = True
+if not isinstance(X_pred, int): use_pred_flag = True
 
 X_train = np.vstack((X_1, X_2))
 y_train = np.append(y_1, y_2)
@@ -91,7 +91,7 @@ with open(pred_file_name, "w") as f:
         f.write("Mse on predict is " + str(mse(pred, y_true)) + "\n")
         f.write("Accuracy on predict is " + str(accuracy(pred, y_true)) + "\n")
 
-if pred != 0:
+if not isinstance(pred, int):
     df = pd.DataFrame({"name": list(names_train) + list(names_pred) * use_pred_flag + list(names_snag) * use_snag_flag,
                        "true": list(y_train) + list(y_true) * use_pred_flag + list(y_snag) * use_snag_flag,
                        "pred": list(pred_self) + list(pred) * use_pred_flag + list(pred_snag) * use_snag_flag,
@@ -100,19 +100,17 @@ if pred != 0:
                        })
     df.to_csv(out_file_name, index=False)
 
+
 msg = "Необходимо протестироват сразу несколько моделей?"
 choices = ("[<F1>]Да", "[<F2>]Нет")
 
 if easygui.ynbox(msg, "hey", choices, image=None, default_choice="[<F1>]Да", cancel_choice="[<F2>]Нет"):
-    message = ""
     models = [KNeighborsClassifier(15),
               RandomForestClassifier(n_estimators=1000),
               linear_model.LogisticRegression(class_weight='balanced'),
               SVC(class_weight="balanced"),
               xgboost.XGBClassifier(n_estimators=100)]
     for i in models:
-        straticfication = StratifiedKFold(n_splits=6, shuffle=True)
-        scores = cross_val_score(i, X_train, y_train, scoring="accuracy", cv=straticfication)
-        message += str((type(i), "\t", np.mean(scores), scores)) + "\n"
-    easygui.msgbox(message)
-    print(message)
+        cv = StratifiedKFold(n_splits=6, shuffle=True)
+        scores = cross_val_score(i, X_train, y_train, scoring="accuracy", cv=cv)
+        print(str((type(i), "\t", np.mean(scores), scores)) + "\n")
