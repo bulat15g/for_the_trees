@@ -8,6 +8,7 @@ import pandas as pd
 ##############################
 k_multiplier = 2
 check_N_next = 6
+distance_break = 100
 ##############################
 pd.set_option('display.expand_frame_repr', False)
 warnings.filterwarnings('ignore')
@@ -50,13 +51,20 @@ x_prepassed_index = []
 y_prepassed_index = []
 
 for i in range(len(x_list) - check_N_next):
+    x_0 = x_list[i][0]
+    x_1 = x_list[i][1]
+    y_0 = y_list[i][0]
+    y_1 = y_list[i][1]
+
     for n in range(1, check_N_next + 1):
-        if abs(x_list[i][0] - x_list[i + n][0]) < (  # dist
-                x_list[i][1] + x_list[i + n][1]) * k_multiplier:  # double std
+        if x_list[i + n][0] - x_0 < (x_1 + x_list[i + n][1]) * k_multiplier:
             x_prepassed_index.append((x_list[i][2], x_list[i + n][2]))
-        if abs(y_list[i][0] - y_list[i + n][0]) < (  # dist
-                y_list[i][1] + y_list[i + n][1]) * k_multiplier:  # double std
+
+        if y_list[i + n][0] - y_0 < (y_1 + y_list[i + n][1]) * k_multiplier:
             y_prepassed_index.append((y_list[i][2], y_list[i + n][2]))
+
+        if (x_list[i + n][0] - x_0) ** 2 + (y_list[i + n][0] - y_0) ** 2 > distance_break:
+            break
 
 passed_indexes = set(x_prepassed_index).intersection(y_prepassed_index)
 
