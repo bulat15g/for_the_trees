@@ -1,10 +1,11 @@
 import os
 import warnings
 from glob import glob
+from math import sin, cos
 from platform import system as getsys
 
 import easygui
-import matplotlib.pyplot as plt
+# import matplotlib.pyplot as plt
 import numpy as np
 import pandas as pd
 from scipy.spatial import ConvexHull
@@ -14,84 +15,92 @@ sep = "\\"
 if getsys() == "Linux":
     sep = "/"
 
-k = 20.0  # dist = 1 meter/k
+######################################################################
+section_distance = 0.1  # METERS 0.1 = 10 santimeters
 persentile = 0.1
 begin_quantile = 0.03
 begin_dist = 0.9
-end_dist = 1.8
-
+end_dist = 1.7
+angles = [x for x in range(0, 171, 10)]
+medians = [x for x in angles if x < 90]
+######################################################################
 dir_name = easygui.diropenbox("select tree to process")
 out_dir = dir_name + sep + "processed"
+
+section_distance = 1 / section_distance
+angle_names = [str(x) for x in angles]
+all_stats_dict = {}
+trees_means_array = []
+trees_min_max_array = []
 
 if not os.path.exists(out_dir):
     os.makedirs(out_dir)
 
 for file_name in glob(dir_name + sep + "*.txt"):
+    print("going to file ", file_name)
+    only_file_name = file_name.split(sep)[-1]
     df = pd.read_csv(file_name, delimiter=' ', header=None)
     df.columns = ['x', 'y', 'z', 'laser']
     df.drop('laser', 1, inplace=True)
     df['x'] = df['x'] - df['x'].mean()
     df['y'] = df['y'] - df['y'].mean()
-    df['z'] = (df['z'] - df['z'].quantile(0.02))
+    df['z'] = (df['z'] - df['z'].quantile(0.015))
     df = df[(begin_dist < df['z']) & (df['z'] < end_dist)]
-    df['z'] *= k
+    df['z'] *= section_distance
 
     df['z'] = df['z'].round(0)
-    df['xy'] = 0.707 * df['x'] + 0.707 * df['y']
-    df['xxy'] = 0.98 * df['x'] + 0.17 * df['y']
-    df['xyy'] = 0.34 * df['x'] + 0.94 * df['y']
-    df['xxxy'] = 0.5 * df['x'] + 0.87 * df['y']
-    df['xyyy'] = 0.64 * df['x'] + 0.77 * df['y']
-    df['xxxxy'] = 0.77 * df['x'] + 0.64 * df['y']
-    df['xyyyy'] = 0.87 * df['x'] + 0.5 * df['y']
+    for x in enumerate(angles):
+        df[angle_names[x[0]]] = cos(x[1]) * df['x'] + sin(x[1]) * df['y']
 
     out_df = pd.DataFrame(
-        columns=['z', 'xy', 'xxy', 'xyy', 'xxxy', 'xyyy', 'xxxxy', 'xyyyy', 'hull_volume', 'hull_area'])
+        columns=['z'] + angle_names + ['hull_volume', 'hull_area'])
 
+    trees_min_max = []
     for i in range(int(df['z'].min()), int(df['z'].max())):
         ndf = df[df["z"] == i]
+        trees_min_max.append(ndf[angle_names].max() - ndf[angle_names].min())
         hull_volume = 0
         hull_area = 0
         try:
             hull = ConvexHull(ndf[['x', 'y']])
             hull_volume = hull.volume
             hull_area = hull.area
-
-            points = np.array(ndf[['x', 'y']])
-            if i % 4 == 0:
-                plt.plot(ndf['x'], ndf['y'], 'o')
-                for simplex in hull.simplices:
-                    plt.plot(points[simplex, 0], points[simplex, 1], 'k-')
-                plt.plot(points[hull.vertices, 0], points[hull.vertices, 1], 'r--', lw=2)
-                plt.plot(points[hull.vertices[0], 0], points[hull.vertices[0], 1], 'ro')
-                plt.show()
-
         except Exception:
             pass
 
         height = i
         ndf = pd.DataFrame(ndf.quantile(1 - persentile).subtract(ndf.quantile(persentile))).T.round(3)
         ndf.at[0, 'z'] = height
-        ndf = ndf[['z', 'xy', 'xxy', 'xyy', 'xxxy', 'xyyy', 'xxxxy', 'xyyyy']]
+        ndf = ndf[['z'] + angle_names]
         ndf["hull_volume"] = round(hull_volume, 5)
         ndf["hull_area"] = round(hull_area, 5)
         out_df = out_df.append(ndf)
-    out_df['z'] /= k
+    out_df['z'] /= section_distance
 
-    # plots
-    # plt.figure(figsize=(15, 10))
-    # plt.plot(out_df["z"], out_df['xy'], label="xy")
-    # # plt.plot(out_df["z"], out_df['xxy'], label="xxy")
-    # plt.plot(out_df["z"], out_df['xyy'], label="xyy")
-    # plt.plot(out_df["z"], out_df['xxxy'], label="xxxy")
-    # plt.plot(out_df["z"], out_df['xyyy'], label="xyyy")
-    # plt.plot(out_df["z"], out_df['xxxxy'], label="xxxxy")
-    # plt.plot(out_df["z"], out_df['xyyyy'], label="xyyyy")
-    #
-    # plt.ylabel("Diameter of tree")
-    # plt.xlabel(str(round(1.0 / k, 3)) + " *10^-1 M")
-    # plt.title(file_name.split(sep)[-1] + " file at percentile " + str(persentile))
-    # plt.legend()
-    # plt.show()
+    for i in medians:
+        out_df[str(i) + "med"] = (out_df[str(i)] + out_df[str(i + 90)]) / 2
 
+    out_df = out_df[['z'] + [str(x) + "med" for x in medians] + ['hull_volume', 'hull_area']]
+    # out_df = out_df[['z'] + angle_names + ['hull_volume', 'hull_area']]
     out_df.to_csv(out_dir + sep + file_name.split(sep)[-1], index=False)
+
+    stats_df = out_df[[str(x) + "med" for x in medians]].values
+    all_stats_dict["tree_mean_" + only_file_name] = np.mean(stats_df)
+    all_stats_dict["tree_std_" + only_file_name] = np.std(stats_df)
+    all_stats_dict["sections_mean_" + only_file_name] = np.mean(stats_df, axis=1)
+    all_stats_dict["sections_std_" + only_file_name] = np.std(stats_df, axis=1)
+    all_stats_dict["tree_min_max_mean" + only_file_name] = np.mean(trees_min_max)
+    all_stats_dict["tree_min_max" + only_file_name] = trees_min_max
+    all_stats_dict["tree_min_max_std" + only_file_name] = np.std(trees_min_max)
+    trees_means_array.append(np.mean(stats_df))
+    trees_min_max_array.append(np.mean(trees_min_max))
+
+all_stats_dict["forest_mean"] = np.mean(trees_means_array)
+all_stats_dict["forest_std"] = np.std(trees_means_array)
+all_stats_dict["forest_min_max_mean"] = np.mean(trees_means_array)
+all_stats_dict["forest_min_max_std"] = np.std(trees_means_array)
+
+with open(out_dir + sep + "stats.txt", "w") as f:
+    for k, v in all_stats_dict.items():
+        s = "** " + str(k) + "  =  " + str(v) + "\n"
+        b = f.write(s)
